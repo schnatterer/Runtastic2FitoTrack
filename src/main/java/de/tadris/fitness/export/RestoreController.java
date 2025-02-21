@@ -19,59 +19,56 @@
 
 package de.tadris.fitness.export;
 
-import android.content.Context;
-import android.net.Uri;
-
 import com.fasterxml.jackson.core.JsonParser;
 import com.fasterxml.jackson.dataformat.xml.XmlMapper;
 
+import java.io.File;
+import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.zip.ZipInputStream;
 
-import de.tadris.fitness.Instance;
-import de.tadris.fitness.R;
-import de.tadris.fitness.data.AppDatabase;
-import de.tadris.fitness.data.GpsSample;
-import de.tadris.fitness.data.GpsWorkout;
-import de.tadris.fitness.data.IndoorSample;
-import de.tadris.fitness.data.IndoorWorkout;
-import de.tadris.fitness.data.Interval;
-import de.tadris.fitness.data.IntervalSet;
-import de.tadris.fitness.data.WorkoutType;
-import de.tadris.fitness.data.migration.Migration;
-import de.tadris.fitness.data.migration.Migration12IntervalSets;
-
+// Modified for Runtastic2FitoTrack
 public class RestoreController {
 
-    private final Context context;
+/*    private final Context context;
     private final Uri input;
     private final ImportStatusListener listener;
-    private final boolean replace;
+    private final boolean replace;*/
+    private final File input;
     private FitoTrackDataContainer dataContainer;
-    private final AppDatabase database;
+/*    private final AppDatabase database;*/
 
-    public RestoreController(Context context, Uri input, boolean replace, ImportStatusListener listener) {
+/*    public RestoreController(Context context, Uri input, boolean replace, ImportStatusListener listener) {
         this.context = context;
         this.input = input;
         this.replace = replace;
         this.listener = listener;
         this.database = Instance.getInstance(context).db;
+    }*/
+
+    public RestoreController(File input) {
+        //      this.context = context;
+        this.input = input;
+        //    this.listener = listener;
     }
 
-    public void restoreData() throws IOException, UnsupportedVersionException {
-        listener.onStatusChanged(0, context.getString(R.string.loadingFile));
+    public FitoTrackDataContainer restoreData() throws IOException, UnsupportedVersionException {
+        //listener.onStatusChanged(0, context.getString(R.string.loadingFile));
         loadDataFromFile();
         checkVersion();
-        restoreDatabase();
-        listener.onStatusChanged(100, context.getString(R.string.finished));
+        //restoreDatabase();
+        //listener.onStatusChanged(100, context.getString(R.string.finished));
+        return dataContainer;
     }
 
     private void loadDataFromFile() throws IOException {
-        InputStream stream = context.getContentResolver().openInputStream(input);
+        //InputStream stream = context.getContentResolver().openInputStream(input);
+        InputStream stream = new FileInputStream(input);
         boolean isZIP = stream.read() == 0x50; // Zip Magic number
         stream.close();
-        stream = context.getContentResolver().openInputStream(input);
+        //stream = context.getContentResolver().openInputStream(input);
+        stream = new FileInputStream(input);
         InputStream decompressedInput;
         if (isZIP) {
             ZipInputStream zipIn = new ZipInputStream(stream);
@@ -92,6 +89,7 @@ public class RestoreController {
             throw new UnsupportedVersionException("Version Code" + dataContainer.getVersion() + " is unsupported!");
         }
     }
+/*
 
     private void restoreDatabase() {
         database.runInTransaction(() -> {
@@ -227,6 +225,7 @@ public class RestoreController {
             }
         }
     }
+*/
 
     public interface ImportStatusListener {
         void onStatusChanged(int progress, String action);

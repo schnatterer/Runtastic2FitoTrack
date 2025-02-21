@@ -1,0 +1,32 @@
+plugins {
+    id 'java'
+    id 'org.jetbrains.kotlin.jvm' version '2.1.10'
+}
+
+group = 'org.example'
+version = '1.0-SNAPSHOT'
+
+repositories {
+    mavenCentral()
+    google()
+
+}
+
+dependencies {
+    implementation 'com.fasterxml.jackson.dataformat:jackson-dataformat-xml:2.12.7'
+    def room_version = "2.5.0"
+    //implementation "androidx.room:room-runtime:$room_version"
+    //compileOnly "androidx.room:room-compiler:$room_version"
+    // Use just the annotations to satisfy compiler, so we have to do less modifying of data classes
+    compileOnly "androidx.room:room-common:$room_version"  
+
+    def mapsforge_version = "0.17.0"
+    implementation "org.mapsforge:mapsforge-core:$mapsforge_version"
+
+    testImplementation platform('org.junit:junit-bom:5.10.0')
+    testImplementation 'org.junit.jupiter:junit-jupiter'
+}
+
+test {
+    useJUnitPlatform()
+}

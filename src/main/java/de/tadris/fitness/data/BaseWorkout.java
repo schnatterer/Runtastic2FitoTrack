@@ -19,11 +19,8 @@
 
 package de.tadris.fitness.data;
 
-import android.content.Context;
-
 import androidx.room.ColumnInfo;
 import androidx.room.PrimaryKey;
-
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
@@ -67,6 +64,8 @@ public abstract class BaseWorkout {
      */
     public String comment;
 
+    // Modified for Runtastic2FitoTrack
+    public static final String WORKOUT_TYPE_ID_OTHER = "other";
     /**
      * Type of workout
      *
@@ -75,7 +74,7 @@ public abstract class BaseWorkout {
      */
     @ColumnInfo(name = "workoutType")
     @JsonProperty(value = "workoutType")
-    public String workoutTypeId = WorkoutTypeManager.WORKOUT_TYPE_ID_OTHER;
+    public String workoutTypeId = WORKOUT_TYPE_ID_OTHER;
 
     /**
      * Average heart rate bpm
@@ -136,10 +135,11 @@ public abstract class BaseWorkout {
         return safeComment.substring(0, Math.min(safeComment.length(), 50)); // cut the comment after 50 Chars
     }
 
-    @JsonIgnore
+    // TODO modified
+/*    @JsonIgnore
     public WorkoutType getWorkoutType(Context context) {
         return WorkoutTypeManager.getInstance().getWorkoutTypeById(context, workoutTypeId);
-    }
+    }*/
 
     @JsonIgnore
     public void setWorkoutType(WorkoutType workoutType) {

@@ -20,10 +20,7 @@
 package de.tadris.fitness.data;
 
 import androidx.room.Entity;
-
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
-
-import de.tadris.fitness.data.preferences.UserMeasurements;
 
 @Entity(tableName = "indoor_workout")
 @JsonIgnoreProperties(ignoreUnknown = true)
@@ -59,12 +56,13 @@ public class IndoorWorkout extends BaseWorkout {
         return workoutTypeId.equals("treadmill");
     }
 
-    public double estimateDistance(UserMeasurements measurements) {
+// Modified for Runtastic2FitoTrack
+/*    public double estimateDistance(UserMeasurements measurements) {
         return repetitions * measurements.getStepLength();
     }
 
     public double estimateSpeed(UserMeasurements measurements) {
         return estimateDistance(measurements) / (duration / 1000d);
-    }
+    }*/
 
 }

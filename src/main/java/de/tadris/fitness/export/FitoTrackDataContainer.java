@@ -21,19 +21,14 @@ package de.tadris.fitness.export;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.dataformat.xml.annotation.JacksonXmlRootElement;
+import de.tadris.fitness.data.*;
 
 import java.util.ArrayList;
 import java.util.List;
 
-import de.tadris.fitness.data.GpsSample;
-import de.tadris.fitness.data.GpsWorkout;
-import de.tadris.fitness.data.IndoorSample;
-import de.tadris.fitness.data.IndoorWorkout;
-import de.tadris.fitness.data.WorkoutType;
-
 @JacksonXmlRootElement(localName = "fito-track")
 @JsonIgnoreProperties(ignoreUnknown = true)
-class FitoTrackDataContainer {
+public class FitoTrackDataContainer {
 
     private int version;
     private List<GpsWorkout> workouts = new ArrayList<>();

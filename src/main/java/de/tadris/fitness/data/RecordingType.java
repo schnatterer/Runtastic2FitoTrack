@@ -19,26 +19,16 @@
 
 package de.tadris.fitness.data;
 
-import de.tadris.fitness.ui.record.RecordGpsWorkoutActivity;
-import de.tadris.fitness.ui.record.RecordIndoorWorkoutActivity;
-import de.tadris.fitness.ui.record.RecordWorkoutActivity;
-import de.tadris.fitness.ui.workout.ShowGpsWorkoutActivity;
-import de.tadris.fitness.ui.workout.ShowIndoorWorkoutActivity;
-import de.tadris.fitness.ui.workout.WorkoutActivity;
-
+// Modified for Runtastic2FitoTrack
 public enum RecordingType {
 
-    INDOOR("indoor", RecordIndoorWorkoutActivity.class, ShowIndoorWorkoutActivity.class),
-    GPS("gps", RecordGpsWorkoutActivity.class, ShowGpsWorkoutActivity.class);
+    INDOOR("indoor"),
+    GPS("gps");
 
     public final String id;
-    public final Class<? extends RecordWorkoutActivity> recorderActivityClass;
-    public final Class<? extends WorkoutActivity> showDetailsActivityClass;
 
-    RecordingType(String id, Class<? extends RecordWorkoutActivity> recorderActivityClass, Class<? extends WorkoutActivity> showDetailsActivityClass) {
+    RecordingType(String id) {
         this.id = id;
-        this.recorderActivityClass = recorderActivityClass;
-        this.showDetailsActivityClass = showDetailsActivityClass;
     }
 
     public static RecordingType findById(String id) {
