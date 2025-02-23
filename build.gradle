@@ -13,7 +13,9 @@ repositories {
 }
 
 dependencies {
+    // Fitotrack
     implementation 'com.fasterxml.jackson.dataformat:jackson-dataformat-xml:2.12.7'
+
     def room_version = "2.5.0"
     //implementation "androidx.room:room-runtime:$room_version"
     //compileOnly "androidx.room:room-compiler:$room_version"
@@ -23,6 +25,10 @@ dependencies {
     def mapsforge_version = "0.17.0"
     implementation "org.mapsforge:mapsforge-core:$mapsforge_version"
 
+    // Runtastic2Fitotrack
+    implementation 'org.xerial:sqlite-jdbc:3.49.1.0'
+    
+    // Testing
     testImplementation platform('org.junit:junit-bom:5.10.0')
     testImplementation 'org.junit.jupiter:junit-jupiter'
 }
