@@ -17,10 +17,15 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.sql.*;
+import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Map;
 
 public class Main {
+
+    public static final String JDBC_SQLITE_DB = "jdbc:sqlite:db";
+
     public static void main(String[] args) {
         //fitotrackImportExportRoundtrip();
 
@@ -46,12 +51,43 @@ public class Main {
         Class.forName("org.sqlite.JDBC");
         FitoTrackDataContainer data = new FitoTrackDataContainer();
         data.setVersion(3);
+
+        Map<String, String> shoes = queryShoes();
+        queryWorkouts(data, shoes);
+
+        new BackupController(data, new File("out.ftb")).exportData();
+
+    }
+
+    private static Map<String, String> queryShoes() throws SQLException {
+        Map<String, String> shoes = new HashMap<>();
         try (
-                Connection connection = DriverManager.getConnection("jdbc:sqlite:db");
+                Connection connection = DriverManager.getConnection(JDBC_SQLITE_DB);
+                Statement statement = connection.createStatement();
+                ResultSet resultSet = statement.executeQuery("SELECT * FROM Equipment")
+        ) {
+            while (resultSet.next()) {
+                String name = resultSet.getString("name");
+                String vendor = resultSet.getString("serverVendorName");
+                String model = resultSet.getString("serverEquipmentThumbnailUrl");
+                shoes.put(resultSet.getString("id"), name == null ?  vendor + " " + model : vendor + " " + name);
+            }
+        }
+        return shoes;
+    }
+
+    private static void queryWorkouts(FitoTrackDataContainer data, Map<String, String> shoes) throws SQLException, IOException {
+        try (
+                Connection connection = DriverManager.getConnection(JDBC_SQLITE_DB);
                 Statement statement = connection.createStatement();
                 ResultSet resultSet = statement.executeQuery("SELECT * FROM session")
         ) {
             while (resultSet.next()) {
+                if (resultSet.getString("sampleid") == null) {
+                    // There seem to be some rows that don't contain any valid data. Discard them for better data quality
+                    continue;
+                }
+
                 GpsWorkout gpsWorkout = new GpsWorkout();
                 // ID: https://codeberg.org/jannis/FitoTrack/src/tag/v15.6/app/src/main/java/de/tadris/fitness/recording/gps/GpsWorkoutSaver.java#L94
                 // workout.id = System.nanoTime();
@@ -68,19 +104,27 @@ public class Main {
                 // km/h -> m/s 
                 gpsWorkout.avgSpeed = resultSet.getDouble("avgSpeed") / 3.6;
                 gpsWorkout.topSpeed = resultSet.getDouble("maxSpeed") / 3.6;
-                // See WorkoutBuilder
-                gpsWorkout.avgPace = ((double) gpsWorkout.duration / 1000 / 60) / ((double) gpsWorkout.length / 1000);
+                if (gpsWorkout.length > 0) {
+                    // Division by zero causes result to be infinite, which likely is the reason for not null constraint to hit on import
+                    // See WorkoutBuilder
+                    gpsWorkout.avgPace = ((double) gpsWorkout.duration / 1000 / 60) / ((double) gpsWorkout.length / 1000);
+                }
                 gpsWorkout.minElevationMSL = resultSet.getFloat("minElevation");
                 gpsWorkout.maxElevationMSL = resultSet.getFloat("maxElevation"); 
                 gpsWorkout.ascent = resultSet.getFloat("elevationGain"); 
                 gpsWorkout.descent = resultSet.getFloat("elevationLoss"); 
-                gpsWorkout.comment = resultSet.getString("note"); 
                 gpsWorkout.calorie = resultSet.getInt("calories"); 
-                // TODO store in comment: Runtastic
-                //  shoeId
+                String shoe = shoes.get(resultSet.getString("shoeId"));
+                String originalComment = resultSet.getString("note");
+                gpsWorkout.comment = "Runtastic." +
+                        (originalComment != null ? "\nNote: " + originalComment : "") +
+                        (shoe != null ? "\nShoe: " + shoe : "");
+                // TODO?
                 // Dehydration?
+                // Wheather
                 // Device from sport-activities DbSportActivitiy.originFeature
 
+                
                 List<GpsSample> gpsSamples = readGpsSamples(resultSet, gpsWorkout.id);
                 setMSLElevation(gpsSamples);
                         
@@ -94,8 +138,6 @@ public class Main {
 
             }
         }
-        new BackupController(data, new File("out.ftb")).exportData();
-
     }
 
     private static List<GpsSample> readGpsSamples(ResultSet resultSet, long workoutId) throws SQLException, IOException {
@@ -120,7 +162,8 @@ public class Main {
                     gpsSample.lon = node.get("longitude").floatValue();
                     gpsSample.lat = node.get("latitude").floatValue();
                     gpsSample.elevation = node.get("altitude").floatValue();
-                    gpsSample.speed = node.get("speed").floatValue();
+                    // km/h -> m/s 
+                    gpsSample.speed = node.get("speed").floatValue() / 3.6;
                     gpsSample.relativeTime = node.get("duration").asInt();
                     //gpsSample.distance = node.get("distance").asInt();
                     //gpsSample.elevationGain = node.get("elevation_gain").asInt();
@@ -134,8 +177,9 @@ public class Main {
 
                 String encodedTrace = resultSet.getString("encodedTrace");
                 if (encodedTrace != null) {
-                    System.out.println("Falling back to encodedTrace for sampleid: " + sampleid);
-                    // TODO fall back to encodedTrace? -> Only points but no time, speed, elevation
+                    System.out.println("We could fall back to encodedTrace for sampleid: " + sampleid);
+                    // fall back to encodedTrace? -> Only points but no time, speed, elevation
+                    // This was never necessary in my data
                     // https://valhalla.github.io/demos/polyline/
                     // https://github.com/scoutant/polyline-decoder/blob/master/src/main/java/org/scoutant/polyline/PolylineDecoder.java
                 } else {
@@ -165,7 +209,7 @@ public class Main {
                 byte[] accuracyH = new byte[1];
                 dataInputStream.read(accuracyH);
                 float speed = dataInputStream.readFloat();
-                gpsSample.speed = speed;
+                gpsSample.speed = speed  / 3.6;
                 int duration = dataInputStream.readInt();
                 gpsSample.relativeTime = duration;
                 int distance = dataInputStream.readInt();
