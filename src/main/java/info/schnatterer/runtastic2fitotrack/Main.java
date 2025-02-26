@@ -97,7 +97,9 @@ public class Main {
                 gpsWorkout.end = resultSet.getLong("endTime"); 
                 gpsWorkout.duration = resultSet.getInt("runtime"); 
                 gpsWorkout.pauseDuration = resultSet.getInt("pauseInMillis");
-                gpsWorkout.workoutTypeId = "running"; // We could match Runtastic's workout types to those defined in WorkoutTypeManager, but since my tracks are only running, I'll skip this step.                //gpsWorkout.avgHeartRate // Never tracked in my data...
+                RuntasticSportType sportType = RuntasticSportType.fromId(resultSet.getInt("sportType"));
+                gpsWorkout.workoutTypeId = sportType.toFitoTrack();
+                // gpsWorkout.avgHeartRate // Never tracked in my data...
                 //gpsWorkout.maxHeartRate 
                 
                 gpsWorkout.length = resultSet.getInt("distance"); 
