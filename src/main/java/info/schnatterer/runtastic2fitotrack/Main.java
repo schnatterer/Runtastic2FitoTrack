@@ -1,5 +1,6 @@
 package info.schnatterer.runtastic2fitotrack;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import de.tadris.fitness.data.GpsSample;
@@ -25,6 +26,7 @@ import java.util.Map;
 public class Main {
 
     public static final String JDBC_SQLITE_DB = "jdbc:sqlite:db";
+    public static final String JDBC_SQLITE_SPORT_ACTIVITIES = "jdbc:sqlite:sport-activities";
 
     public static void main(String[] args) {
         //fitotrackImportExportRoundtrip();
@@ -70,7 +72,7 @@ public class Main {
                 String name = resultSet.getString("name");
                 String vendor = resultSet.getString("serverVendorName");
                 String model = resultSet.getString("serverEquipmentThumbnailUrl");
-                shoes.put(resultSet.getString("id"), name == null ?  vendor + " " + model : vendor + " " + name);
+                shoes.put(resultSet.getString("id"), name == null ? vendor + " " + model : vendor + " " + name);
             }
         }
         return shoes;
@@ -80,10 +82,13 @@ public class Main {
         try (
                 Connection connection = DriverManager.getConnection(JDBC_SQLITE_DB);
                 Statement statement = connection.createStatement();
-                ResultSet resultSet = statement.executeQuery("SELECT * FROM session")
+                // order by technically unnecessary but helps debugging
+                ResultSet resultSet = statement.executeQuery("SELECT * FROM session order by endTime desc");
+                Connection sportActivitiesDb = DriverManager.getConnection(JDBC_SQLITE_SPORT_ACTIVITIES)
         ) {
             while (resultSet.next()) {
-                if (resultSet.getString("sampleid") == null) {
+                String sampleid = resultSet.getString("sampleid");
+                if (sampleid == null) {
                     // There seem to be some rows that don't contain any valid data. Discard them for better data quality
                     continue;
                 }
@@ -92,17 +97,17 @@ public class Main {
                 // ID: https://codeberg.org/jannis/FitoTrack/src/tag/v15.6/app/src/main/java/de/tadris/fitness/recording/gps/GpsWorkoutSaver.java#L94
                 // workout.id = System.nanoTime();
                 // We use millis here, even though FitoTrack uses nanos. For both, it's highly unlikely to get interference.
-                gpsWorkout.id = resultSet.getLong("endTime"); 
-                gpsWorkout.start = resultSet.getLong("startTime"); 
-                gpsWorkout.end = resultSet.getLong("endTime"); 
-                gpsWorkout.duration = resultSet.getInt("runtime"); 
+                gpsWorkout.id = resultSet.getLong("endTime");
+                gpsWorkout.start = resultSet.getLong("startTime");
+                gpsWorkout.end = resultSet.getLong("endTime");
+                gpsWorkout.duration = resultSet.getInt("runtime");
                 gpsWorkout.pauseDuration = resultSet.getInt("pauseInMillis");
                 RuntasticSportType sportType = RuntasticSportType.fromId(resultSet.getInt("sportType"));
                 gpsWorkout.workoutTypeId = sportType.toFitoTrack();
                 // gpsWorkout.avgHeartRate // Never tracked in my data...
                 //gpsWorkout.maxHeartRate 
-                
-                gpsWorkout.length = resultSet.getInt("distance"); 
+
+                gpsWorkout.length = resultSet.getInt("distance");
                 // km/h -> m/s 
                 gpsWorkout.avgSpeed = resultSet.getDouble("avgSpeed") / 3.6;
                 gpsWorkout.topSpeed = resultSet.getDouble("maxSpeed") / 3.6;
@@ -112,40 +117,70 @@ public class Main {
                     gpsWorkout.avgPace = ((double) gpsWorkout.duration / 1000 / 60) / ((double) gpsWorkout.length / 1000);
                 }
                 gpsWorkout.minElevationMSL = resultSet.getFloat("minElevation");
-                gpsWorkout.maxElevationMSL = resultSet.getFloat("maxElevation"); 
-                gpsWorkout.ascent = resultSet.getFloat("elevationGain"); 
-                gpsWorkout.descent = resultSet.getFloat("elevationLoss"); 
-                gpsWorkout.calorie = resultSet.getInt("calories"); 
+                gpsWorkout.maxElevationMSL = resultSet.getFloat("maxElevation");
+                gpsWorkout.ascent = resultSet.getFloat("elevationGain");
+                gpsWorkout.descent = resultSet.getFloat("elevationLoss");
+                gpsWorkout.calorie = resultSet.getInt("calories");
                 String shoe = shoes.get(resultSet.getString("shoeId"));
+                if (shoe == null) {
+                    shoe = tryToFindShoeInOtherDb(shoes, sportActivitiesDb, sampleid);
+                }
                 String originalComment = resultSet.getString("note");
-                gpsWorkout.comment = "Runtastic." +
-                        (originalComment != null ? "\nNote: " + originalComment : "") +
-                        (shoe != null ? "\nShoe: " + shoe : "");
-                // TODO?
-                // Dehydration?
-                // Wheather
-                // Device from sport-activities DbSportActivitiy.originFeature
-
+                StringBuilder comment = new StringBuilder("Runtastic.");
+                if (originalComment != null && originalComment.isBlank()) {
+                    comment.append("\nNote: ").append(originalComment);
+                }
+                if (shoe != null) {
+                    comment.append("\nShoe: ").append(shoe);
+                }
+                gpsWorkout.comment = comment.toString();
                 
+                // TODO?
+                // Wheather
+                // Device from sport-activities DbSportActivitiy.originFeature?
+
+
                 List<GpsSample> gpsSamples = readGpsSamples(resultSet, gpsWorkout.id);
                 setMSLElevation(gpsSamples);
-                        
+
                 for (GpsSample gpsSample : gpsSamples) {
                     data.getSamples().add(gpsSample);
                 }
                 data.getWorkouts().add(gpsWorkout);
-                
                 //String sampleid = resultSet.getString("sampleid");
+/*                if (sportType != RuntasticSportType.RUNNING) {
+                    System.out.println("SampleId: " + sampleid + ": SPort type: " + sportType);
+                }*/
                 //System.out.println("SampleId: " + sampleid + ": Number of GpsSamples found: " + gpsSamples.size());
 
             }
         }
     }
 
+    private static String tryToFindShoeInOtherDb(Map<String, String> shoes, Connection sportActivitiesDb, String sampleid) throws SQLException, JsonProcessingException {
+        String shoe = null;
+        PreparedStatement sportActivitiesDbStatement = sportActivitiesDb.prepareStatement("SELECT * FROM DbSportActivity WHERE id = ?");
+        sportActivitiesDbStatement.setString(1, sampleid);
+        ResultSet sportActivitiesDbResultSet = sportActivitiesDbStatement.executeQuery();
+        if (sportActivitiesDbResultSet.next()) {
+            String equipmentFeatureJson = sportActivitiesDbResultSet.getString("equipmentFeature");
+            if (equipmentFeatureJson != null) {
+                ObjectMapper objectMapper = new ObjectMapper();
+                JsonNode rootNode = objectMapper.readTree(equipmentFeatureJson);
+                JsonNode idNode = rootNode.path("userEquipment").get(0).path("id");
+                if (!idNode.isMissingNode()) {
+                    shoe = shoes.get(idNode.asText());
+                    //System.out.println("Found missing shoe in SportActivity DB. For sampleId=" + sampleid + ". Shoe:" + shoe);
+                }
+            }
+        }
+        return shoe;
+    }
+
     private static List<GpsSample> readGpsSamples(ResultSet resultSet, long workoutId) throws SQLException, IOException {
         List<GpsSample> gpsSamples = new LinkedList<>();
         int gpsTraceCount = resultSet.getInt("gpsTraceCount");
-        
+
         if (gpsTraceCount == 0) {
 
             // Try reading from runtastic export, Sport-sessions/GPS-Data json files
@@ -155,7 +190,7 @@ public class Main {
                 ObjectMapper objectMapper = new ObjectMapper();
                 JsonNode rootNode = objectMapper.readTree(sampleFile);
 
-                int i=0;
+                int i = 0;
                 for (JsonNode node : rootNode) {
                     GpsSample gpsSample = new GpsSample();
                     gpsSample.id = workoutId + i++;
@@ -184,14 +219,15 @@ public class Main {
                     // This was never necessary in my data
                     // https://valhalla.github.io/demos/polyline/
                     // https://github.com/scoutant/polyline-decoder/blob/master/src/main/java/org/scoutant/polyline/PolylineDecoder.java
-                } else {
+                } 
+/*                else {
                     System.out.println("Workout without gps sampleid: " + sampleid);
-                }
+                }*/
             }
 
             return gpsSamples;
         }
-        
+
         try (DataInputStream dataInputStream = new DataInputStream(
                 resultSet.getBinaryStream("gpsTrace"))) {
             // Unknown. Header? Version?
@@ -211,7 +247,7 @@ public class Main {
                 byte[] accuracyH = new byte[1];
                 dataInputStream.read(accuracyH);
                 float speed = dataInputStream.readFloat();
-                gpsSample.speed = speed  / 3.6;
+                gpsSample.speed = speed / 3.6;
                 int duration = dataInputStream.readInt();
                 gpsSample.relativeTime = duration;
                 int distance = dataInputStream.readInt();
@@ -247,7 +283,7 @@ public class Main {
         }
         return null;
     }
-    
+
     // From GpsWorkoutSaver
     static void setMSLElevation(List<GpsSample> samples) {
         if (samples.size() == 0) return;
