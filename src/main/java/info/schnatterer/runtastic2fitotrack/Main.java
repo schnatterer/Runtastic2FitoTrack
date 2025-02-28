@@ -84,7 +84,8 @@ public class Main {
                 Statement statement = connection.createStatement();
                 // order by technically unnecessary but helps debugging
                 ResultSet resultSet = statement.executeQuery("SELECT * FROM session order by endTime desc");
-                Connection sportActivitiesDb = DriverManager.getConnection(JDBC_SQLITE_SPORT_ACTIVITIES)
+                Connection sportActivitiesDb = DriverManager.getConnection(JDBC_SQLITE_SPORT_ACTIVITIES);
+                PreparedStatement sportActivitiesDbStatement = sportActivitiesDb.prepareStatement("SELECT * FROM DbSportActivity WHERE id = ?");
         ) {
             while (resultSet.next()) {
                 String sampleid = resultSet.getString("sampleid");
@@ -92,6 +93,11 @@ public class Main {
                     // There seem to be some rows that don't contain any valid data. Discard them for better data quality
                     continue;
                 }
+
+                /* Query matching row from sportActivities database*/
+                sportActivitiesDbStatement.setString(1, sampleid);
+                ResultSet sportActivitiesDbResultSet = sportActivitiesDbStatement.executeQuery();
+                sportActivitiesDbResultSet.next(); // Pick the first row, if any.
 
                 GpsWorkout gpsWorkout = new GpsWorkout();
                 // ID: https://codeberg.org/jannis/FitoTrack/src/tag/v15.6/app/src/main/java/de/tadris/fitness/recording/gps/GpsWorkoutSaver.java#L94
@@ -108,8 +114,13 @@ public class Main {
                 //gpsWorkout.maxHeartRate 
 
                 gpsWorkout.length = resultSet.getInt("distance");
-                // km/h -> m/s 
+                // km/h -> m/s
                 gpsWorkout.avgSpeed = resultSet.getDouble("avgSpeed") / 3.6;
+                if (gpsWorkout.avgSpeed <= 0 && gpsWorkout.length > 0) {
+                    // In my data runtastic stopped providing avgSpeed around 2019/01
+                    // See WorkoutBuilder
+                    gpsWorkout.avgSpeed = (double) gpsWorkout.length / (double) (gpsWorkout.duration / 1000);
+                }
                 gpsWorkout.topSpeed = resultSet.getDouble("maxSpeed") / 3.6;
                 if (gpsWorkout.length > 0) {
                     // Division by zero causes result to be infinite, which likely is the reason for not null constraint to hit on import
@@ -121,23 +132,42 @@ public class Main {
                 gpsWorkout.ascent = resultSet.getFloat("elevationGain");
                 gpsWorkout.descent = resultSet.getFloat("elevationLoss");
                 gpsWorkout.calorie = resultSet.getInt("calories");
+                
+                // Stitch all additional data into the comment field
+                StringBuilder comment = new StringBuilder("Runtastic.");
+                String originalComment = resultSet.getString("note");
                 String shoe = shoes.get(resultSet.getString("shoeId"));
                 if (shoe == null) {
-                    shoe = tryToFindShoeInOtherDb(shoes, sportActivitiesDb, sampleid);
+                    shoe = tryToFindShoeInSportActivitiesDb(shoes, sportActivitiesDbResultSet);
                 }
-                String originalComment = resultSet.getString("note");
-                StringBuilder comment = new StringBuilder("Runtastic.");
-                if (originalComment != null && originalComment.isBlank()) {
+                String weather = tryToFindWeatherInSportActivitiesDb(sportActivitiesDbResultSet);
+                Integer dehydration = sportActivitiesDbResultSet.getInt("dehydrationVolume");
+                String subjectiveFeeling = sportActivitiesDbResultSet.getString("subjectiveFeeling");
+                String surface = tryToFindSurfaceInSportActivitiesDb(sportActivitiesDbResultSet);
+                String device = tryToFindDeviceInSportActivitiesDb(sportActivitiesDbResultSet);
+                
+                if (originalComment != null && !originalComment.isBlank()) {
                     comment.append("\nNote: ").append(originalComment);
                 }
-                if (shoe != null) {
+                if (shoe != null && !shoe.isBlank()) {
                     comment.append("\nShoe: ").append(shoe);
                 }
+                if (!weather.isBlank()) {
+                    comment.append("\nWheather: ").append(weather);
+                }
+                if (dehydration > 0) {
+                    comment.append("\nDehydration: ").append(dehydration);
+                }
+                if (subjectiveFeeling != null) {
+                    comment.append("\nSubjective Feeling: ").append(subjectiveFeeling);
+                }
+                if (surface != null && !surface.isBlank()) {
+                    comment.append("\nSurface: ").append(surface);
+                }
+                if (!device.isBlank()) {
+                    comment.append("\nDevice: ").append(device);
+                }
                 gpsWorkout.comment = comment.toString();
-                
-                // TODO?
-                // Wheather
-                // Device from sport-activities DbSportActivitiy.originFeature?
 
 
                 List<GpsSample> gpsSamples = readGpsSamples(resultSet, gpsWorkout.id);
@@ -157,27 +187,104 @@ public class Main {
         }
     }
 
-    private static String tryToFindShoeInOtherDb(Map<String, String> shoes, Connection sportActivitiesDb, String sampleid) throws SQLException, JsonProcessingException {
-        String shoe = null;
-        PreparedStatement sportActivitiesDbStatement = sportActivitiesDb.prepareStatement("SELECT * FROM DbSportActivity WHERE id = ?");
-        sportActivitiesDbStatement.setString(1, sampleid);
-        ResultSet sportActivitiesDbResultSet = sportActivitiesDbStatement.executeQuery();
-        if (sportActivitiesDbResultSet.next()) {
-            String equipmentFeatureJson = sportActivitiesDbResultSet.getString("equipmentFeature");
-            if (equipmentFeatureJson != null) {
-                ObjectMapper objectMapper = new ObjectMapper();
-                JsonNode rootNode = objectMapper.readTree(equipmentFeatureJson);
-                JsonNode idNode = rootNode.path("userEquipment").get(0).path("id");
-                if (!idNode.isMissingNode()) {
-                    shoe = shoes.get(idNode.asText());
-                    //System.out.println("Found missing shoe in SportActivity DB. For sampleId=" + sampleid + ". Shoe:" + shoe);
+    private static String tryToFindSurfaceInSportActivitiesDb(ResultSet sportActivitiesDbResultSet) throws SQLException, JsonProcessingException {
+        String surface = null;
+        
+        String trackFeatureJson = sportActivitiesDbResultSet.getString("trackMetricsFeature");
+        if (trackFeatureJson != null) {
+            ObjectMapper objectMapper = new ObjectMapper();
+            JsonNode rootNode = objectMapper.readTree(trackFeatureJson);
+
+            JsonNode surfaceNode = rootNode.path("surface");
+            if (!surfaceNode.isMissingNode()) {
+                surface = surfaceNode.asText();
+            }
+        }
+        return surface;
+    }
+
+    private static String tryToFindWeatherInSportActivitiesDb(ResultSet sportActivitiesDbResultSet) throws SQLException, JsonProcessingException {
+        StringBuilder weatherDetails = new StringBuilder();
+
+        String weatherFeatureJson = sportActivitiesDbResultSet.getString("weatherFeature");
+        if (weatherFeatureJson != null) {
+            ObjectMapper objectMapper = new ObjectMapper();
+            JsonNode rootNode = objectMapper.readTree(weatherFeatureJson);
+
+            JsonNode conditionsNode = rootNode.path("conditions");
+            if (!conditionsNode.isMissingNode()) {
+                weatherDetails.append("Conditions: ").append(conditionsNode.asText()).append(". ");
+            }
+
+            JsonNode humidityNode = rootNode.path("humidity");
+            if (!humidityNode.isMissingNode()) {
+                weatherDetails.append("Humidity: ").append(humidityNode.asDouble()).append("%").append(". ");
+            }
+
+            JsonNode temperatureNode = rootNode.path("temperature");
+            if (!temperatureNode.isMissingNode()) {
+                weatherDetails.append("Temperature: ").append(temperatureNode.asDouble()).append("°C").append(". ");
+            }
+
+            JsonNode windDirectionNode = rootNode.path("windDirection");
+            if (!windDirectionNode.isMissingNode()) {
+                weatherDetails.append("Wind Direction: ").append(windDirectionNode.asDouble()).append("°").append(". ");
+            }
+
+            JsonNode windSpeedNode = rootNode.path("windSpeed");
+            if (!windSpeedNode.isMissingNode()) {
+                weatherDetails.append("Wind Speed: ").append(windSpeedNode.asDouble()).append(" m/s").append(". ");
+            }
+        }
+        return weatherDetails.toString().trim();
+    }
+
+    private static String tryToFindDeviceInSportActivitiesDb(ResultSet sportActivitiesDbResultSet) throws SQLException, JsonProcessingException {
+        StringBuilder deviceDetails = new StringBuilder();
+
+        String deviceFeatureJson = sportActivitiesDbResultSet.getString("originFeature");
+        if (deviceFeatureJson != null) {
+            ObjectMapper objectMapper = new ObjectMapper();
+            JsonNode rootNode = objectMapper.readTree(deviceFeatureJson);
+
+            JsonNode deviceNode = rootNode.path("device");
+            if (!deviceNode.isMissingNode()) {
+                JsonNode nameNode = deviceNode.path("name");
+                JsonNode osVersionNode = deviceNode.path("osVersion");
+                JsonNode vendorNode = deviceNode.path("vendor");
+
+                if (!nameNode.isMissingNode()) {
+                    deviceDetails.append("Name: ").append(nameNode.asText()).append(". ");
                 }
+                if (!osVersionNode.isMissingNode()) {
+                    deviceDetails.append("OS Version: ").append(osVersionNode.asText()).append(". ");
+                }
+                if (!vendorNode.isMissingNode()) {
+                    deviceDetails.append("Vendor: ").append(vendorNode.asText()).append(". ");
+                }
+            }
+        }
+        return deviceDetails.toString().trim();
+    }
+
+    private static String tryToFindShoeInSportActivitiesDb(Map<String, String> shoes, ResultSet sportActivitiesDbResultSet) throws SQLException, JsonProcessingException {
+        String shoe = null;
+
+        String equipmentFeatureJson = sportActivitiesDbResultSet.getString("equipmentFeature");
+        if (equipmentFeatureJson != null) {
+            ObjectMapper objectMapper = new ObjectMapper();
+            JsonNode rootNode = objectMapper.readTree(equipmentFeatureJson);
+            JsonNode idNode = rootNode.path("userEquipment").get(0).path("id");
+            if (!idNode.isMissingNode()) {
+                shoe = shoes.get(idNode.asText());
+                //System.out.println("Found missing shoe in SportActivity DB. For sampleId=" + sampleid + ". Shoe:" + shoe);
             }
         }
         return shoe;
     }
 
-    private static List<GpsSample> readGpsSamples(ResultSet resultSet, long workoutId) throws SQLException, IOException {
+    private static List<GpsSample> readGpsSamples(ResultSet resultSet, long workoutId) throws
+            SQLException, IOException {
         List<GpsSample> gpsSamples = new LinkedList<>();
         int gpsTraceCount = resultSet.getInt("gpsTraceCount");
 
