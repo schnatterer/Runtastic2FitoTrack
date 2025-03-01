@@ -134,7 +134,7 @@ public class Main {
                 gpsWorkout.calorie = resultSet.getInt("calories");
                 
                 // Stitch all additional data into the comment field
-                StringBuilder comment = new StringBuilder("Runtastic.");
+                StringBuilder comment = new StringBuilder("Runtastic");
                 String originalComment = resultSet.getString("note");
                 String shoe = shoes.get(resultSet.getString("shoeId"));
                 if (shoe == null) {
@@ -147,25 +147,25 @@ public class Main {
                 String device = tryToFindDeviceInSportActivitiesDb(sportActivitiesDbResultSet);
                 
                 if (originalComment != null && !originalComment.isBlank()) {
-                    comment.append("\nNote: ").append(originalComment);
+                    comment.append(";\nNote: ").append(originalComment);
                 }
                 if (shoe != null && !shoe.isBlank()) {
-                    comment.append("\nShoe: ").append(shoe);
+                    comment.append(";\nShoe: ").append(shoe);
                 }
                 if (!weather.isBlank()) {
-                    comment.append("\nWheather: ").append(weather);
+                    comment.append(";\nWheather: ").append(weather);
                 }
                 if (dehydration > 0) {
-                    comment.append("\nDehydration: ").append(dehydration);
+                    comment.append(";\nDehydration: ").append(dehydration);
                 }
                 if (subjectiveFeeling != null) {
-                    comment.append("\nSubjective Feeling: ").append(subjectiveFeeling);
+                    comment.append(";\nSubjective Feeling: ").append(subjectiveFeeling);
                 }
                 if (surface != null && !surface.isBlank()) {
-                    comment.append("\nSurface: ").append(surface);
+                    comment.append(";\nSurface: ").append(surface);
                 }
                 if (!device.isBlank()) {
-                    comment.append("\nDevice: ").append(device);
+                    comment.append(";\nDevice: ").append(device);
                 }
                 gpsWorkout.comment = comment.toString();
 
