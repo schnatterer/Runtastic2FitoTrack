@@ -108,8 +108,7 @@ public class Main {
                 gpsWorkout.end = resultSet.getLong("endTime");
                 gpsWorkout.duration = resultSet.getInt("runtime");
                 gpsWorkout.pauseDuration = resultSet.getInt("pauseInMillis");
-                RuntasticSportType sportType = RuntasticSportType.fromId(resultSet.getInt("sportType"));
-                gpsWorkout.workoutTypeId = sportType.toFitoTrack();
+                    
                 // gpsWorkout.avgHeartRate // Never tracked in my data...
                 //gpsWorkout.maxHeartRate 
 
@@ -168,7 +167,34 @@ public class Main {
                     comment.append(";\nDevice: ").append(device);
                 }
                 gpsWorkout.comment = comment.toString();
+                
+                RuntasticSportType sportType = RuntasticSportType.fromId(resultSet.getInt("sportType"));
+                gpsWorkout.workoutTypeId = sportType.toFitoTrack();
 
+                /*if (sportType != RuntasticSportType.RUNNING) {
+                    continue; // Use this instance of FitoTrack only for running
+                } else {
+                    if (shoe != null && !shoe.isBlank()) {
+                        String workoutTypeId = shoe
+                                .replace(" ", "-")
+                                .replaceAll("[^a-zA-Z0-9-]", "")
+                                .replaceAll("-$", ""); // Trailing dashes
+                        gpsWorkout.workoutTypeId = workoutTypeId;
+                        if (workoutTypes.get(workoutTypeId) == null) {
+                            WorkoutType workoutType = new WorkoutType();
+                            workoutType.id = workoutTypeId;
+                            workoutType.title = shoe;
+                            // 7 mph = 11 kmh seems like a sensible average -> MET of 11
+                            // See METFunctionsProvider
+                            // Unfortunately, using shoe as workaround for activity causes this fixed MET to be used 
+                            // instead of the MET depending on the avg speed for WORKOUT_TYPE_ID_RUNNING 🙁
+                            // We could track as running and then change retrospectively
+                            workoutType.MET = 11; 
+                            data.getWorkoutTypes().add(workoutType);
+                            workoutTypes.put(workoutTypeId, workoutType);
+                        }
+                    }
+                }*/
 
                 List<GpsSample> gpsSamples = readGpsSamples(resultSet, gpsWorkout.id);
                 setMSLElevation(gpsSamples);
