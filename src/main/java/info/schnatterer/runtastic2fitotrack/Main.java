@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import de.tadris.fitness.data.GpsSample;
 import de.tadris.fitness.data.GpsWorkout;
+import de.tadris.fitness.data.WorkoutType;
 import de.tadris.fitness.export.BackupController;
 import de.tadris.fitness.export.FitoTrackDataContainer;
 import de.tadris.fitness.export.RestoreController;
@@ -51,8 +52,21 @@ public class Main {
 
     private static void readSqlite() throws ClassNotFoundException, SQLException, IOException {
         Class.forName("org.sqlite.JDBC");
-        FitoTrackDataContainer data = new FitoTrackDataContainer();
-        data.setVersion(3);
+        FitoTrackDataContainer data = null;
+
+        File backupFile = new File("fitotrack-backup.ftb");
+        if (backupFile.exists()) {
+            try {
+                data = new RestoreController(backupFile).restoreData();
+            } catch (Exception e) {
+                System.err.println("Error loading file 'fitotrack-backup.ftb': " + e.getMessage());
+            }
+        }
+        if (data == null) {
+            System.err.println("Warning: Cannot find existing backup 'fitotrack-backup.ftb' to merge. Only migrating existing data from runtastic");
+            data = new FitoTrackDataContainer();
+            data.setVersion(3);
+        }
 
         Map<String, String> shoes = queryShoes();
         queryWorkouts(data, shoes);
@@ -79,6 +93,7 @@ public class Main {
     }
 
     private static void queryWorkouts(FitoTrackDataContainer data, Map<String, String> shoes) throws SQLException, IOException {
+        //Map<String, WorkoutType> workoutTypes = new HashMap<>();
         try (
                 Connection connection = DriverManager.getConnection(JDBC_SQLITE_DB);
                 Statement statement = connection.createStatement();
