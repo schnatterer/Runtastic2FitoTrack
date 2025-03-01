@@ -30,24 +30,12 @@ public class Main {
     public static final String JDBC_SQLITE_SPORT_ACTIVITIES = "jdbc:sqlite:sport-activities";
 
     public static void main(String[] args) {
-        //fitotrackImportExportRoundtrip();
-
         try {
             readSqlite();
-        } catch (Throwable e) {
+        } catch (Exception e) {
             e.printStackTrace();
             throw new RuntimeException(e);
         }
-    }
-
-    private static void fitotrackImportExportRoundtrip() {
-        try {
-            FitoTrackDataContainer data = new RestoreController(new File("in.ftb")).restoreData();
-            new BackupController(data, new File("out.ftb")).exportData();
-        } catch (Exception e) {
-            throw new RuntimeException(e);
-        }
-        System.out.println("Exported file out.ftb. Unzip to see XML.");
     }
 
     private static void readSqlite() throws ClassNotFoundException, SQLException, IOException {
