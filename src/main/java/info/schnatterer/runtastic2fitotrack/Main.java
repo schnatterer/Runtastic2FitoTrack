@@ -5,9 +5,8 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import de.tadris.fitness.data.GpsSample;
 import de.tadris.fitness.data.GpsWorkout;
-import de.tadris.fitness.data.WorkoutType;
-import de.tadris.fitness.export.BackupController;
 import de.tadris.fitness.export.FitoTrackDataContainer;
+import de.tadris.fitness.export.BackupController;
 import de.tadris.fitness.export.RestoreController;
 import de.tadris.fitness.util.AltitudeCorrection;
 
@@ -60,7 +59,7 @@ public class Main {
         queryWorkouts(data, shoes);
 
         new BackupController(data, new File("out.ftb")).exportData();
-
+        System.out.println("Wrote " + data.getWorkouts().size() + " workouts and " + data.getSamples().size() + " GPS samples to out.ftb");
     }
 
     private static Map<String, String> queryShoes() throws SQLException {
